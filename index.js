@@ -1,5 +1,6 @@
 const { webcrypto } = require('crypto');
 global.crypto = webcrypto;
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -76,7 +77,7 @@ function buildHelpMenu() {
 ┃✰│jeu pile ➫ Pile ou face
 ┃✰│blague ➫ Blague aléatoire
 ┃✰│8ball ➫ Réponse magique
-┃✰│love ➫ % d’amour
+┃✰│love ➫ % d'amour
 ╰━━━━━━━━━━━━━━━┈⊷
 
 ╭━━〔 TÉLÉCHARGEMENT 〕━┈⊷
@@ -140,13 +141,28 @@ async function createSession(phoneNumber, sessionId) {
     markOnlineOnConnect: false,
   });
 
+  // ════════════════════════════════════
+  //   ✅ FIX — PAIRING CODE CORRIGÉ
+  // ════════════════════════════════════
   if (!sock.authState.creds.registered) {
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 3000));
     try {
-      const code          = await sock.requestPairingCode(phoneNumber);
+      // Nettoyer le numéro : chiffres seulement, sans zéros en début
+      const cleanNumber = phoneNumber
+        .replace(/[^0-9]/g, '')
+        .replace(/^0+/, '');
+
+      console.log(`📱 Numéro formaté pour pairing: ${cleanNumber}`);
+
+      const code          = await sock.requestPairingCode(cleanNumber);
       const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
-      sessionCache.set(sessionId, { code: formattedCode, status: 'pending', phone: phoneNumber });
-      console.log(`✅ Code généré pour ${phoneNumber}: ${formattedCode}`);
+
+      sessionCache.set(sessionId, {
+        code: formattedCode,
+        status: 'pending',
+        phone: cleanNumber
+      });
+      console.log(`✅ Code généré: ${formattedCode}`);
     } catch (err) {
       sessionCache.set(sessionId, { code: null, status: 'error', error: err.message });
       console.error('❌ Erreur pairing:', err.message);
@@ -162,7 +178,6 @@ async function createSession(phoneNumber, sessionId) {
       activeSessions.set(sessionId, sock);
       sessionCache.set(sessionId, { status: 'connected', phone: phoneNumber });
 
-      // Message de bienvenue avec image
       await sock.sendMessage(phoneNumber + '@s.whatsapp.net', {
         image: { url: BOT_IMG },
         caption:
@@ -228,7 +243,6 @@ async function createSession(phoneNumber, sessionId) {
     //   🛠️ UTILITAIRES
     // ════════════════════════════════════
 
-    // .help
     if (cmd === `${PREFIX}help`) {
       await sock.sendMessage(from, {
         image: { url: BOT_IMG },
@@ -236,7 +250,6 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .ping
     else if (cmd === `${PREFIX}ping`) {
       const ms = Date.now();
       await sock.sendMessage(from, {
@@ -248,7 +261,6 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .stats
     else if (cmd === `${PREFIX}stats`) {
       const u = Math.floor((Date.now() - startTime) / 1000);
       const h = Math.floor(u / 3600);
@@ -267,7 +279,6 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .info
     else if (cmd === `${PREFIX}info`) {
       await sock.sendMessage(from, {
         image: { url: BOT_IMG },
@@ -282,7 +293,6 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .time
     else if (cmd === `${PREFIX}time`) {
       const now = new Date().toLocaleString('fr-FR', { timeZone: 'Africa/Conakry' });
       await sock.sendMessage(from, {
@@ -298,7 +308,6 @@ async function createSession(phoneNumber, sessionId) {
     //   🤖 IA & ASSISTANCE
     // ════════════════════════════════════
 
-    // .ia / .gpt
     else if (cmd.startsWith(`${PREFIX}ia `) || cmd.startsWith(`${PREFIX}gpt `)) {
       await sock.sendMessage(from, {
         text:
@@ -315,7 +324,6 @@ async function createSession(phoneNumber, sessionId) {
     //   🎮 JEUX & DIVERTISSEMENT
     // ════════════════════════════════════
 
-    // .quiz
     else if (cmd === `${PREFIX}quiz`) {
       const q = QUIZ_QUESTIONS[Math.floor(Math.random() * QUIZ_QUESTIONS.length)];
       pendingQuiz.set(from, q.r);
@@ -329,7 +337,6 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .quizscore
     else if (cmd === `${PREFIX}quizscore`) {
       const score = quizScores.get(sender) || 0;
       await sock.sendMessage(from, {
@@ -341,7 +348,6 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .pile
     else if (cmd === `${PREFIX}pile` || cmd === `${PREFIX}jeu pile`) {
       const result = Math.random() > 0.5 ? '🟡 PILE' : '⚪ FACE';
       await sock.sendMessage(from, {
@@ -352,11 +358,9 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .blague
     else if (cmd === `${PREFIX}blague`) {
       const blagues = [
         'Pourquoi les plongeurs plongent-ils toujours en arrière ? Parce que sinon ils tomberaient dans le bateau ! 😂',
-        'C\'est l\'histoire d\'un homme qui entre dans une bibliothèque et demande un steak. Le bibliothécaire chuchote : "Pardon... un steak s\'il vous plaît." 🤣',
         'Qu\'est-ce qu\'un canif ? Un petit fien ! 😄',
         'Pourquoi l\'épouvantail a-t-il eu un prix ? Parce qu\'il était exceptionnel dans son domaine ! 🌾',
         'Comment appelle-t-on un chat tombé dans un pot de peinture ? Un chat-peint ! 🎨',
@@ -369,18 +373,11 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .8ball
     else if (cmd.startsWith(`${PREFIX}8ball `)) {
       const reponses = [
-        '✅ Oui, absolument !',
-        '✅ C\'est certain !',
-        '✅ Sans aucun doute !',
-        '❓ Peut-être...',
-        '❓ C\'est flou, réessaie.',
-        '❓ Difficile à dire.',
-        '❌ Non, définitivement.',
-        '❌ Mes sources disent non.',
-        '❌ Ne compte pas là-dessus.',
+        '✅ Oui, absolument !', '✅ C\'est certain !', '✅ Sans aucun doute !',
+        '❓ Peut-être...', '❓ C\'est flou, réessaie.', '❓ Difficile à dire.',
+        '❌ Non, définitivement.', '❌ Mes sources disent non.', '❌ Ne compte pas là-dessus.',
       ];
       await sock.sendMessage(from, {
         text:
@@ -391,7 +388,6 @@ async function createSession(phoneNumber, sessionId) {
       });
     }
 
-    // .love
     else if (cmd.startsWith(`${PREFIX}love`)) {
       const pct = Math.floor(Math.random() * 101);
       const bar = '❤️'.repeat(Math.floor(pct / 10)) + '🖤'.repeat(10 - Math.floor(pct / 10));
@@ -410,7 +406,6 @@ async function createSession(phoneNumber, sessionId) {
     //   👥 GESTION DE GROUPE
     // ════════════════════════════════════
 
-    // .tagall / .hidetag
     else if (cmd === `${PREFIX}tagall` || cmd.startsWith(`${PREFIX}hidetag`)) {
       try {
         const groupMeta = await sock.groupMetadata(from);
@@ -424,50 +419,33 @@ async function createSession(phoneNumber, sessionId) {
         });
       } catch {
         await sock.sendMessage(from, {
-          text:
-            `╭━━〔 ❌ ERREUR 〕━━┈⊷\n` +
-            `┃✰│ Commande réservée aux groupes.\n` +
-            `╰━━━━━━━━━━━━━━━┈⊷`
+          text: `╭━━〔 ❌ ERREUR 〕━━┈⊷\n┃✰│ Commande réservée aux groupes.\n╰━━━━━━━━━━━━━━━┈⊷`
         });
       }
     }
 
-    // .open
     else if (cmd === `${PREFIX}open`) {
       try {
         await sock.groupSettingUpdate(from, 'not_announcement');
         await sock.sendMessage(from, {
-          text:
-            `╭━━〔 🔓 GROUPE OUVERT 〕━━┈⊷\n` +
-            `┃✰│ Tous les membres peuvent écrire.\n` +
-            `╰━━━━━━━━━━━━━━━┈⊷`
+          text: `╭━━〔 🔓 GROUPE OUVERT 〕━━┈⊷\n┃✰│ Tous les membres peuvent écrire.\n╰━━━━━━━━━━━━━━━┈⊷`
         });
       } catch {
         await sock.sendMessage(from, {
-          text:
-            `╭━━〔 ❌ ERREUR 〕━━┈⊷\n` +
-            `┃✰│ Tu dois être admin.\n` +
-            `╰━━━━━━━━━━━━━━━┈⊷`
+          text: `╭━━〔 ❌ ERREUR 〕━━┈⊷\n┃✰│ Tu dois être admin.\n╰━━━━━━━━━━━━━━━┈⊷`
         });
       }
     }
 
-    // .close
     else if (cmd === `${PREFIX}close`) {
       try {
         await sock.groupSettingUpdate(from, 'announcement');
         await sock.sendMessage(from, {
-          text:
-            `╭━━〔 🔒 GROUPE FERMÉ 〕━━┈⊷\n` +
-            `┃✰│ Admins seulement.\n` +
-            `╰━━━━━━━━━━━━━━━┈⊷`
+          text: `╭━━〔 🔒 GROUPE FERMÉ 〕━━┈⊷\n┃✰│ Admins seulement.\n╰━━━━━━━━━━━━━━━┈⊷`
         });
       } catch {
         await sock.sendMessage(from, {
-          text:
-            `╭━━〔 ❌ ERREUR 〕━━┈⊷\n` +
-            `┃✰│ Tu dois être admin.\n` +
-            `╰━━━━━━━━━━━━━━━┈⊷`
+          text: `╭━━〔 ❌ ERREUR 〕━━┈⊷\n┃✰│ Tu dois être admin.\n╰━━━━━━━━━━━━━━━┈⊷`
         });
       }
     }
@@ -516,8 +494,8 @@ async function createSession(phoneNumber, sessionId) {
 app.post('/api/pair', async (req, res) => {
   let { phone } = req.body;
   if (!phone) return res.status(400).json({ success: false, error: 'Numéro requis' });
-  phone = phone.replace(/[\s\-\+\(\)]/g, '');
-  if (phone.length < 9 || isNaN(phone))
+  phone = phone.replace(/[^0-9]/g, '').replace(/^0+/, '');
+  if (phone.length < 9)
     return res.status(400).json({ success: false, error: 'Numéro invalide' });
   const sessionId = 'session_' + phone + '_' + Date.now();
   res.json({ success: true, sessionId });
