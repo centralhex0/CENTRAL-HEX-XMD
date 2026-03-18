@@ -144,41 +144,7 @@ async function createSession(phoneNumber, sessionId) {
   // ════════════════════════════════════
   //   ✅ FIX — PAIRING CODE CORRIGÉ
   // ════════════════════════════════════
-  if (!sock.authState.creds.registered) {
-  await new Promise((resolve, reject) => {
-    // Attendre que le WebSocket soit vraiment connecté
-    sock.ev.on('connection.update', async ({ connection }) => {
-      if (connection === 'connecting') {
-        try {
-          await new Promise(r => setTimeout(r, 1500));
-          const cleanNumber = phoneNumber
-            .replace(/[^0-9]/g, '')
-            .replace(/^0+/, '');
 
-          console.log(`📱 Demande code pour: ${cleanNumber}`);
-          const code = await sock.requestPairingCode(cleanNumber);
-          const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
-
-          sessionCache.set(sessionId, {
-            code: formattedCode,
-            status: 'pending',
-            phone: cleanNumber
-          });
-          console.log(`✅ Code: ${formattedCode}`);
-          resolve();
-        } catch (err) {
-          sessionCache.set(sessionId, {
-            code: null,
-            status: 'error',
-            error: err.message
-          });
-          console.error('❌ Erreur pairing:', err.message);
-          resolve();
-        }
-      }
-    });
-  });
-  }
 
   sock.ev.on('creds.update', saveCreds);
 
@@ -189,7 +155,41 @@ async function createSession(phoneNumber, sessionId) {
       activeSessions.set(sessionId, sock);
       sessionCache.set(sessionId, { status: 'connected', phone: phoneNumber });
 
-      await sock.sendMessage(phoneNumber + '@s.whatsapp.net', {
+      await sock.sendMessage(phoneNumber if (!sock.authState.creds.registered) {
+  await new Promise((resolve) => {
+    const handler = async ({ connection, isOnline }) => {
+      if (connection === 'connecting' || isOnline === true) {
+        sock.ev.off('connection.update', handler);
+        try {
+          await new Promise(r => setTimeout(r, 2000));
+          const cleanNumber = phoneNumber
+            .replace(/[^0-9]/g, '')
+            .replace(/^0+/, '');
+          console.log(`📱 Demande code pour: ${cleanNumber}`);
+          const code = await sock.requestPairingCode(cleanNumber);
+          const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
+          sessionCache.set(sessionId, {
+            code: formattedCode,
+            status: 'pending',
+            phone: cleanNumber
+          });
+          console.log(`✅ Code: ${formattedCode}`);
+        } catch (err) {
+          sessionCache.set(sessionId, {
+            code: null,
+            status: 'error',
+            error: err.message
+          });
+          console.error('❌ Erreur:', err.message);
+        }
+        resolve();
+      }
+    };
+    sock.ev.on('connection.update', handler);
+    // Timeout de sécurité 10s
+    setTimeout(resolve, 10000);
+  });
+      }+ '@s.whatsapp.net', {
         image: { url: BOT_IMG },
         caption:
           `╔══════════════════════╗\n` +
