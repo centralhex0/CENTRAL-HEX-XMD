@@ -145,28 +145,39 @@ async function createSession(phoneNumber, sessionId) {
   //   ✅ FIX — PAIRING CODE CORRIGÉ
   // ════════════════════════════════════
   if (!sock.authState.creds.registered) {
-    await new Promise(r => setTimeout(r, 3000));
-    try {
-      // Nettoyer le numéro : chiffres seulement, sans zéros en début
-      const cleanNumber = phoneNumber
-        .replace(/[^0-9]/g, '')
-        .replace(/^0+/, '');
+  await new Promise((resolve, reject) => {
+    // Attendre que le WebSocket soit vraiment connecté
+    sock.ev.on('connection.update', async ({ connection }) => {
+      if (connection === 'connecting') {
+        try {
+          await new Promise(r => setTimeout(r, 1500));
+          const cleanNumber = phoneNumber
+            .replace(/[^0-9]/g, '')
+            .replace(/^0+/, '');
 
-      console.log(`📱 Numéro formaté pour pairing: ${cleanNumber}`);
+          console.log(`📱 Demande code pour: ${cleanNumber}`);
+          const code = await sock.requestPairingCode(cleanNumber);
+          const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
 
-      const code          = await sock.requestPairingCode(cleanNumber);
-      const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
-
-      sessionCache.set(sessionId, {
-        code: formattedCode,
-        status: 'pending',
-        phone: cleanNumber
-      });
-      console.log(`✅ Code généré: ${formattedCode}`);
-    } catch (err) {
-      sessionCache.set(sessionId, { code: null, status: 'error', error: err.message });
-      console.error('❌ Erreur pairing:', err.message);
-    }
+          sessionCache.set(sessionId, {
+            code: formattedCode,
+            status: 'pending',
+            phone: cleanNumber
+          });
+          console.log(`✅ Code: ${formattedCode}`);
+          resolve();
+        } catch (err) {
+          sessionCache.set(sessionId, {
+            code: null,
+            status: 'error',
+            error: err.message
+          });
+          console.error('❌ Erreur pairing:', err.message);
+          resolve();
+        }
+      }
+    });
+  });
   }
 
   sock.ev.on('creds.update', saveCreds);
