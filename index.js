@@ -1,3 +1,5 @@
+const { webcrypto } = require('crypto');
+global.crypto = webcrypto;
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
